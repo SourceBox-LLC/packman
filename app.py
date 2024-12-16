@@ -21,6 +21,10 @@ if 'access_token' not in st.session_state:
 if 'logout_trigger' not in st.session_state:
     st.session_state.logout_trigger = False
 
+# Initialize session state for delete pack
+if 'show_delete_pack_selectbox' not in st.session_state:
+    st.session_state.show_delete_pack_selectbox = False
+
 # Initialize a session using Boto3
 session = boto3.Session(
     aws_access_key_id=os.getenv('ACCESS_KEY'),
@@ -186,11 +190,14 @@ def main_page():
             else:
                 st.error("Please enter both the pack name and description.")
         
-        #display current packs
-        display_packs_with_delete()
-
-    elif action == "Update Pack":
-        st.write("Update Pack functionality is under development.")
+        # Display current packs
+        packs = get_current_packs()
+        if packs:
+            packs_df = pd.DataFrame(packs)
+            st.header("Current Packs")
+            st.dataframe(packs_df, use_container_width=True)
+        else:
+            st.write("No packs available.")
 
     elif action == "Delete Pack":
         st.write("Delete Pack functionality is under development.")
