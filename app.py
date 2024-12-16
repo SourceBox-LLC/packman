@@ -5,6 +5,7 @@ import logging
 import os
 from dotenv import load_dotenv
 from test import load_csv, load_web, load_s3_file  # Import the functions from test.py
+import pandas as pd
 
 # Load environment variables
 load_dotenv()
@@ -29,6 +30,16 @@ session = boto3.Session(
 
 # Create a Lambda client
 lambda_client = session.client('lambda')
+
+# Function to fetch current packs
+def get_current_packs():
+    # Placeholder data; replace with actual data retrieval logic
+    packs = [
+        {'Pack Name': 'Starter Pack', 'Description': 'This is the starter pack.', 'Date Created': '2023-01-01'},
+        {'Pack Name': 'Advanced Pack', 'Description': 'This pack contains advanced features.', 'Date Created': '2023-02-15'},
+        {'Pack Name': 'Pro Pack', 'Description': 'For professionals and businesses.', 'Date Created': '2023-03-10'},
+    ]
+    return packs
 
 # Function to display the login page
 def login_page():
@@ -89,71 +100,122 @@ def logout():
 def main_page():
     st.sidebar.title("Navigation")
     st.sidebar.button("Logout", on_click=logout)
-    #st.sidebar.button("Create Pack", on_click=create_pack)
-    #st.sidebar.button("Update Pack", on_click=update_pack)
-    #st.sidebar.button("Delete Pack", on_click=delete_pack)
 
     st.title("Main Page")
     st.write("Welcome to the main page!")
     st.write(f"Access Token: {st.session_state.access_token}")
-
-    # Select Action type
-    option = st.selectbox(
-        "Choose action type",
-        ("Create Pack", "Update Pack", "Delete Pack"),
+    
+    # Add an action selectbox at the top
+    action = st.selectbox(
+        "Choose an action",
+        ("Update Pack", "Create Pack", "Delete Pack"),
     )
 
-    st.write("You selected:", option)
-    
-    # Select data type
-    option = st.selectbox(
-        "Choose data type",
-        ("Webpage", "LocalFile", "AWS S3"),
-    )
+    if action == "Update Pack":
+        # Existing logic continues here
+        # Select data type
+        st.subheader("Data Uploads")
+        option = st.selectbox(
+            "Choose data type",
+            ("Webpage", "LocalFile", "AWS S3"),
+        )
 
-    st.write("You selected:", option)
+        st.write("You selected:", option)
 
-    if option == "Webpage":
-        url = st.text_input("Webpage URL", "https://en.wikipedia.org/wiki/Elon_Musk")
-        if url:
-            # Load the web page using WebBaseLoader
-            docs = load_web(url)
-            st.subheader("Loaded web page preview:")
-            for doc in docs:
-                st.write(doc.page_content[:1000])  # Display first 1000 characters of the document
-    
-    elif option == "LocalFile":
-        uploaded_file = st.file_uploader("Upload a file", type=["csv"])
-        if uploaded_file is not None:
-            # Save the uploaded file temporarily
-            temp_file_path = f"temp_{uploaded_file.name}"
-            with open(temp_file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            # Load the document using UnstructuredCSVLoader
-            docs = load_csv([temp_file_path])
-            st.subheader("Loaded document preview:")
-            for doc in docs:
-                st.write(doc.page_content[:1000])  # Display first 1000 characters of the document
-            
-            # Clean up the temporary file if needed
+        if option == "Webpage":
+            url = st.text_input("Webpage URL", "https://en.wikipedia.org/wiki/Elon_Musk")
+            if url:
+                # Load the web page content
+                data = load_web(url)
+                st.write("Loaded web page content:")
+                st.write(data[:1000])  # Display the first 1000 characters
 
-    elif option == "AWS S3":
-        bucket = st.text_input("Bucket Name", "public-test543464")
-        file_name = st.text_input("File Name", "customers-full.csv")
-        if bucket and file_name:
-            # Load the file from S3 using S3DirectoryLoader
-            docs = load_s3_file(bucket, file_name)
-            st.subheader("Loaded S3 file preview:")
-            st.write(docs[:1000])  # Display the first 1000 characters of the content
+        elif option == "LocalFile":
+            uploaded_file = st.file_uploader("Upload a file", type=["csv", "txt"])
+            if uploaded_file is not None:
+                # Save the uploaded file temporarily
+                temp_file_path = f"temp_{uploaded_file.name}"
+                with open(temp_file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                
+                # Load the document using load_csv
+                data = load_csv([temp_file_path])
+                st.write("Loaded document content:")
+                st.write(data[:1000])  # Display the first 1000 characters
+                
+                # Clean up the temporary file if needed
+                os.remove(temp_file_path)
+
+        elif option == "AWS S3":
+            bucket = st.text_input("Bucket Name", "public-test543464")
+            file_name = st.text_input("File Name", "customers-full.csv")
+            if bucket and file_name:
+                # Load the full file content from S3
+                docs = load_s3_file(bucket, file_name)
+                st.write("Loaded S3 file content:")
+                st.write(docs[:1000])  # Display the first 1000 characters of the content
+        
+        else:
+            st.write("Please select a data type")
+        
+        # choose pack to uplaod data
+        st.subheader("Choose pack to upload data")
+        option = st.selectbox(
+            "Choose data type",
+            ("", "example_pack", "example_pack2", "example_pack3"),
+        )
+
+        st.write("You selected:", option)
     
+
+    if action == "Create Pack":
+        st.header("Create a New Pack")
+        
+        # Create a form for creating a new pack
+        with st.form(key='create_pack_form'):
+            pack_name = st.text_input("Pack Name")
+            pack_description = st.text_area("Pack Description")
+            submit_button = st.form_submit_button(label='Submit')
+        
+        if submit_button:
+            if pack_name and pack_description:
+                st.write(f"**Pack Name:** {pack_name}")
+                st.write(f"**Pack Description:** {pack_description}")
+                # You can add more logic here to process the pack creation
+                st.success("Pack created successfully!")
+            else:
+                st.error("Please enter both the pack name and description.")
+        
+        #display current packs
+        display_packs_with_delete()
+
+    elif action == "Update Pack":
+        st.write("Update Pack functionality is under development.")
+
+    elif action == "Delete Pack":
+        st.write("Delete Pack functionality is under development.")
+
     else:
-        st.write("Please select a data type")
-    
-    # Submit button
-    data = None
-    if st.button("Add Data"):
-        st.write(f"Data submitted successfully: {data}")
+        st.write("Please select an action to proceed.")
+
+def display_packs_with_delete():
+    packs = get_current_packs()
+    if packs:
+        st.subheader("Current Packs")
+        for pack in packs:
+            col1, col2, col3, col4 = st.columns([3, 3, 2, 2])
+            with col1:
+                st.write(pack['Pack Name'])
+            with col2:
+                st.write(pack['Description'])
+            with col3:
+                st.write(pack['Date Created'])
+            with col4:
+                if st.button(f"Delete {pack['Pack Name']}", key=f"delete_{pack['Pack Name']}"):
+                    # Add logic to delete the pack
+                    st.write(f"Deleted {pack['Pack Name']}")
+    else:
+        st.write("No packs available.")
 
 # Display the appropriate page based on login state
 if st.session_state.logged_in:
