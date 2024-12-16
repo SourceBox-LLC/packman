@@ -200,7 +200,23 @@ def main_page():
             st.write("No packs available.")
 
     elif action == "Delete Pack":
-        st.write("Delete Pack functionality is under development.")
+        st.header("Delete a Pack")
+
+        # Fetch current packs
+        packs = get_current_packs()
+        if packs:
+            pack_names = [pack['Pack Name'] for pack in packs]
+            selected_pack = st.selectbox("Select Pack to Delete", pack_names)
+
+            if st.button("Confirm Delete", key="confirm_delete_button"):
+                # Add logic to delete the selected pack
+                st.write(f"Deleted {selected_pack}")
+                # Optionally, remove the deleted pack from the packs list
+                packs = [pack for pack in packs if pack['Pack Name'] != selected_pack]
+                packs_df = pd.DataFrame(packs)
+                st.dataframe(packs_df, use_container_width=True)
+        else:
+            st.write("No packs available to delete.")
 
     else:
         st.write("Please select an action to proceed.")
