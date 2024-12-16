@@ -1,31 +1,42 @@
+from langchain_community.document_loaders import UnstructuredCSVLoader
+from langchain_community.document_loaders import WebBaseLoader
 import boto3
-import json
+import os
+from botocore.exceptions import NoCredentialsError, ClientError
 
-# Initialize a session using Boto3
-session = boto3.Session(
-    aws_access_key_id='AKIA4MTWIIWUMKVY3KOL',
-    aws_secret_access_key='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',
-    region_name='us-east-1'
-)
 
-# Create a Lambda client
-lambda_client = session.client('lambda')
+#load csv
+def load_csv(file_paths):
+    loader = UnstructuredCSVLoader(file_paths[0])
+    return loader.load()
 
-# Define the payload for the Lambda function
-payload = {
-    "action": "LOGOUT_USER",
-    "token": "the users access token"
-}
 
-# Invoke the Lambda function
-response = lambda_client.invoke(
-    FunctionName='sb-user-auth-sbUserAuthFunction-3StRr85VyfEC',  # Replace with your Lambda function name
-    InvocationType='RequestResponse',  # Use 'Event' for asynchronous invocation
-    Payload=json.dumps(payload)
-)
+#load web
+def load_web(url):
+    loader_web = WebBaseLoader(
+        url
+    )
+    return loader_web.load()
 
-# Read the response
-response_payload = json.loads(response['Payload'].read())
 
-# Print the response
-print(response_payload)
+# Load S3 file
+def load_s3_file(bucket_name, file_name):
+    s3 = boto3.client('s3')
+    temp_file_path = f"temp_{file_name}"
+    try:
+        # Download the file from S3 to a temporary location
+        s3.download_file(bucket_name, file_name, temp_file_path)
+        
+        # Read the file
+        with open(temp_file_path, 'r', encoding='utf-8') as f:
+            data = f.read()
+        
+        return data
+    except NoCredentialsError:
+        return "AWS credentials not found."
+    except ClientError as e:
+        return f"Error downloading file: {e}"
+    finally:
+        # Remove the temporary file if it exists
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)

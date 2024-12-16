@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from dotenv import load_dotenv
+from test import load_csv, load_web, load_s3_file  # Import the functions from test.py
 
 # Load environment variables
 load_dotenv()
@@ -86,14 +87,78 @@ def logout():
 
 # Function to display the main page
 def main_page():
+    st.sidebar.title("Navigation")
+    st.sidebar.button("Logout", on_click=logout)
+    #st.sidebar.button("Create Pack", on_click=create_pack)
+    #st.sidebar.button("Update Pack", on_click=update_pack)
+    #st.sidebar.button("Delete Pack", on_click=delete_pack)
+
     st.title("Main Page")
     st.write("Welcome to the main page!")
     st.write(f"Access Token: {st.session_state.access_token}")
-    st.sidebar.title("Navigation")
-    st.sidebar.button("Logout", on_click=logout)
+
+    # Select Action type
+    option = st.selectbox(
+        "Choose action type",
+        ("Create Pack", "Update Pack", "Delete Pack"),
+    )
+
+    st.write("You selected:", option)
+    
+    # Select data type
+    option = st.selectbox(
+        "Choose data type",
+        ("Webpage", "LocalFile", "AWS S3"),
+    )
+
+    st.write("You selected:", option)
+
+    if option == "Webpage":
+        url = st.text_input("Webpage URL", "https://en.wikipedia.org/wiki/Elon_Musk")
+        if url:
+            # Load the web page using WebBaseLoader
+            docs = load_web(url)
+            st.subheader("Loaded web page preview:")
+            for doc in docs:
+                st.write(doc.page_content[:1000])  # Display first 1000 characters of the document
+    
+    elif option == "LocalFile":
+        uploaded_file = st.file_uploader("Upload a file", type=["csv"])
+        if uploaded_file is not None:
+            # Save the uploaded file temporarily
+            temp_file_path = f"temp_{uploaded_file.name}"
+            with open(temp_file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            
+            # Load the document using UnstructuredCSVLoader
+            docs = load_csv([temp_file_path])
+            st.subheader("Loaded document preview:")
+            for doc in docs:
+                st.write(doc.page_content[:1000])  # Display first 1000 characters of the document
+            
+            # Clean up the temporary file if needed
+
+    elif option == "AWS S3":
+        bucket = st.text_input("Bucket Name", "public-test543464")
+        file_name = st.text_input("File Name", "customers-full.csv")
+        if bucket and file_name:
+            # Load the file from S3 using S3DirectoryLoader
+            docs = load_s3_file(bucket, file_name)
+            st.subheader("Loaded S3 file preview:")
+            st.write(docs[:1000])  # Display the first 1000 characters of the content
+    
+    else:
+        st.write("Please select a data type")
+    
+    # Submit button
+    data = None
+    if st.button("Add Data"):
+        st.write(f"Data submitted successfully: {data}")
 
 # Display the appropriate page based on login state
 if st.session_state.logged_in:
     main_page()
 else:
     login_page()
+
+
