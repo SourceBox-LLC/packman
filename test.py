@@ -3,6 +3,7 @@ from langchain_community.document_loaders import UnstructuredCSVLoader, WebBaseL
 import boto3
 import os
 from botocore.exceptions import NoCredentialsError, ClientError
+import pandas as pd
 import json
 
 # Configure logging
@@ -11,17 +12,19 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Load CSV
 def load_csv(file_paths):
     logging.info("Loading CSV from file path: %s", file_paths[0])
-    loader = UnstructuredCSVLoader(file_paths[0])
-    data = loader.load()
-    logging.info("CSV loaded successfully.")
+    data = pd.read_csv(file_paths[0])
+    logging.info("CSV loaded into DataFrame successfully.")
     return data
 
 # Load web
 def load_web(url):
     logging.info("Loading web content from URL: %s", url)
     loader_web = WebBaseLoader(url)
-    data = loader_web.load()
+    documents = loader_web.load()
     logging.info("Web content loaded successfully.")
+
+    # Extract text from the loaded documents
+    data = [doc.page_content for doc in documents]
     return data
 
 # Load S3 file
@@ -34,17 +37,19 @@ def load_s3_file(bucket_name, file_name):
         s3.download_file(bucket_name, file_name, temp_file_path)
         logging.info("File downloaded successfully from S3.")
 
-        # Read the file
-        with open(temp_file_path, 'r', encoding='utf-8') as f:
-            data = f.read()
-        logging.info("File read successfully.")
+        # Read the file into a DataFrame
+        data = pd.read_csv(temp_file_path)
+        logging.info("File read into DataFrame successfully.")
         return data
     except NoCredentialsError:
         logging.error("AWS credentials not found.")
-        return "AWS credentials not found."
+        return None
     except ClientError as e:
         logging.error("Error downloading file: %s", e)
-        return f"Error downloading file: {e}"
+        return None
+    except Exception as e:
+        logging.error("Error reading file into DataFrame: %s", e)
+        return None
     finally:
         # Remove the temporary file if it exists
         if os.path.exists(temp_file_path):
@@ -54,6 +59,9 @@ def load_s3_file(bucket_name, file_name):
 # Upload to Pinecone
 def upload_to_pinecone(data, index_name):
     logging.info("Uploading data to Pinecone with index name: %s", index_name)
+    # Format the data
+    formatted_data = format_data_for_pinecone(data)
+    
     # Initialize a session using Boto3
     session = boto3.Session(
         aws_access_key_id=os.getenv('ACCESS_KEY'),
@@ -69,7 +77,7 @@ def upload_to_pinecone(data, index_name):
         "body": {
             "action": "create_pack",
             "username": "example-user",
-            "data": data,
+            "data": formatted_data,
             "pack_name": index_name
         }
     }

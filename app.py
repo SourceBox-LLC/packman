@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from dotenv import load_dotenv
-from test import load_csv, load_web, load_s3_file  # Import the functions from test.py
+from test import load_csv, load_web, load_s3_file # Import the functions from test.py
 import pandas as pd
 
 # Load environment variables
@@ -116,7 +116,9 @@ def main_page():
     )
 
     if action == "Update Pack":
-        # Existing logic continues here
+        # Initialize data
+        data = None
+
         # Select data type
         st.subheader("Data Uploads")
         option = st.selectbox(
@@ -141,13 +143,13 @@ def main_page():
                 temp_file_path = f"temp_{uploaded_file.name}"
                 with open(temp_file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-                
+
                 # Load the document using load_csv
                 data = load_csv([temp_file_path])
                 st.write("Loaded document content:")
-                st.write(data[:1000])  # Display the first 1000 characters
-                
-                # Clean up the temporary file if needed
+                st.write(data.head())  # Display the first few rows
+
+                # Clean up the temporary file
                 os.remove(temp_file_path)
 
         elif option == "AWS S3":
@@ -155,26 +157,35 @@ def main_page():
             file_name = st.text_input("File Name", "customers-full.csv")
             if bucket and file_name:
                 # Load the full file content from S3
-                docs = load_s3_file(bucket, file_name)
-                st.write("Loaded S3 file content:")
-                st.write(docs[:1000])  # Display the first 1000 characters of the content
-        
+                data = load_s3_file(bucket, file_name)
+                if data is not None:
+                    st.write("Loaded S3 file content:")
+                    st.write(data.head())  # Display the first few rows
+                else:
+                    st.error("Failed to load data from S3.")
+
         else:
             st.write("Please select a data type")
-        
-        # choose pack to uplaod data
+
+        # Choose pack to upload data
         st.subheader("Choose pack to upload data")
-        option = st.selectbox(
-            "Choose data type",
+        pack_option = st.selectbox(
+            "Choose pack",
             ("", "example_pack", "example_pack2", "example_pack3"),
         )
 
-        st.write("You selected:", option)
+        st.write("You selected:", pack_option)
 
-        if st.button(f"Upload {option} to Pinecone"):
-            #TODO: format the data to be uploaded to pinecone
-            #upload to pinecone
-            upload_to_pinecone(data, option)
+        if st.button(f"Upload {pack_option} to Pinecone"):
+            if data is not None and pack_option:
+                # Format the data to be uploaded to Pinecone
+                response = upload_to_pinecone(data, pack_option)
+                if response:
+                    st.success("Data uploaded to Pinecone successfully!")
+                else:
+                    st.error("Failed to upload data to Pinecone.")
+            else:
+                st.error("No data loaded or pack not selected. Please load data and select a pack before uploading.")
     
 
     if action == "Create Pack":
@@ -244,6 +255,97 @@ def display_packs_with_delete():
                     st.write(f"Deleted {pack['Pack Name']}")
     else:
         st.write("No packs available.")
+
+def format_data_for_pinecone(data):
+    formatted_data = []
+
+    # Check if data is a list of strings
+    if isinstance(data, list) and all(isinstance(item, str) for item in data):
+        for i, text in enumerate(data):
+            formatted_data.append({"id": f"vec{i+1}", "text": text})
+
+    # Check if data is a DataFrame
+    elif isinstance(data, pd.DataFrame):
+        # Replace 'your_text_column_name' with the actual column name containing text
+        text_column = 'your_text_column_name'
+        if text_column in data.columns:
+            for i, row in data.iterrows():
+                text = str(row[text_column])
+                formatted_data.append({"id": f"vec{i+1}", "text": text})
+        else:
+            # If the text column is not found, concatenate all columns
+            for i, row in data.iterrows():
+                text = ' '.join(str(value) for value in row.values)
+                formatted_data.append({"id": f"vec{i+1}", "text": text})
+    else:
+        logging.error("Unsupported data type for formatting.")
+
+    return formatted_data
+
+def upload_to_pinecone(data, index_name):
+    logging.info("Uploading data to Pinecone with index name: %s", index_name)
+    logging.info("Data type before formatting: %s", type(data))
+    if isinstance(data, pd.DataFrame):
+        logging.info("Data content before formatting:\n%s", data.head())
+    else:
+        logging.info("Data content before formatting:\n%s", data)
+
+    # Format the data
+    formatted_data = format_data_for_pinecone(data)
+    logging.info("Formatted data: %s", formatted_data)
+
+    # Batch the data
+    batch_size = 96  # Maximum inputs per batch for the model
+    batches = [formatted_data[i:i + batch_size] for i in range(0, len(formatted_data), batch_size)]
+    logging.info("Total batches to upload: %d", len(batches))
+
+    # Initialize a session using Boto3
+    session = boto3.Session(
+        aws_access_key_id=os.getenv('ACCESS_KEY'),
+        aws_secret_access_key=os.getenv('SECRET_KEY'),
+        region_name=os.getenv('REGION')
+    )
+
+    # Create a Lambda client
+    lambda_client = session.client('lambda')
+
+    # Iterate over each batch and send to Lambda
+    for batch_number, batch_data in enumerate(batches, start=1):
+        logging.info("Uploading batch %d with %d records", batch_number, len(batch_data))
+
+        # Define the payload for the Lambda function
+        payload = {
+            "body": {
+                "action": "create_pack",
+                "username": "example-user",
+                "data": batch_data,
+                "pack_name": index_name
+            }
+        }
+
+        # Invoke the Lambda function
+        try:
+            response = lambda_client.invoke(
+                FunctionName='pinecone-embedding-HelloWorldFunction-tHPspSqIP5SE',
+                InvocationType='RequestResponse',
+                Payload=json.dumps(payload)
+            )
+            logging.info("Lambda function invoked successfully for batch %d.", batch_number)
+
+            # Read the response
+            response_payload = json.loads(response['Payload'].read())
+            logging.info("Received response from Lambda for batch %d: %s", batch_number, response_payload)
+
+            # Check for errors in the response
+            if 'errorMessage' in response_payload:
+                logging.error("Error in Lambda invocation for batch %d: %s", batch_number, response_payload['errorMessage'])
+                return None
+
+        except Exception as e:
+            logging.error("Error invoking Lambda function for batch %d: %s", batch_number, e)
+            return None
+
+    return True  # Return True if all batches uploaded successfully
 
 # Display the appropriate page based on login state
 if st.session_state.logged_in:
