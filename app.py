@@ -170,6 +170,11 @@ def main_page():
         )
 
         st.write("You selected:", option)
+
+        if st.button(f"Upload {option} to Pinecone"):
+            #TODO: format the data to be uploaded to pinecone
+            #upload to pinecone
+            upload_to_pinecone(data, option)
     
 
     if action == "Create Pack":
