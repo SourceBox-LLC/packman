@@ -5,6 +5,7 @@ import os
 from botocore.exceptions import NoCredentialsError, ClientError
 import pandas as pd
 import json
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,8 +25,17 @@ def load_web(url):
     logging.info("Web content loaded successfully.")
 
     # Extract text from the loaded documents
-    data = [doc.page_content for doc in documents]
-    return data
+    text = documents[0].page_content
+
+    # Split the text into smaller chunks
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,  # Adjust chunk size as needed
+        chunk_overlap=200,
+    )
+    texts = text_splitter.split_text(text)
+    logging.info("Text split into %d chunks.", len(texts))
+
+    return texts
 
 # Load S3 file
 def load_s3_file(bucket_name, file_name):

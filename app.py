@@ -131,10 +131,10 @@ def main_page():
         if option == "Webpage":
             url = st.text_input("Webpage URL", "https://en.wikipedia.org/wiki/Elon_Musk")
             if url:
-                # Load the web page content
+                # Load and split the web page content
                 data = load_web(url)
-                st.write("Loaded web page content:")
-                st.write(data[:1000])  # Display the first 1000 characters
+                st.write("Loaded web page content splits:")
+                st.write(data[:5])  # Display the first 5 chunks
 
         elif option == "LocalFile":
             uploaded_file = st.file_uploader("Upload a file", type=["csv", "txt"])
@@ -279,6 +279,11 @@ def format_data_for_pinecone(data):
                 formatted_data.append({"id": f"vec{i+1}", "text": text})
     else:
         logging.error("Unsupported data type for formatting.")
+
+    logging.info("Checking chunk sizes:")
+    for i, entry in enumerate(formatted_data):
+        text_size = len(entry['text'].encode('utf-8'))
+        logging.info("Chunk %d size: %d bytes", i+1, text_size)
 
     return formatted_data
 
