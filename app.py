@@ -112,10 +112,38 @@ def main_page():
     # Add an action selectbox at the top
     action = st.selectbox(
         "Choose an action",
-        ("Update Pack", "Create Pack", "Delete Pack"),
+        ("Create Pack", "Delete Pack"),
     )
 
-    if action == "Update Pack":
+    
+
+    if action == "Create Pack":
+        st.header("Create a New Pack")
+        
+        # Create a form for creating a new pack
+        with st.form(key='create_pack_form'):
+            pack_name = st.text_input("Pack Name")
+            pack_description = st.text_area("Pack Description")
+            submit_button = st.form_submit_button(label='Submit')
+        
+        if submit_button:
+            if pack_name and pack_description:
+                st.write(f"**Pack Name:** {pack_name}")
+                st.write(f"**Pack Description:** {pack_description}")
+                # You can add more logic here to process the pack creation
+                st.success("Pack created successfully!")
+            else:
+                st.error("Please enter both the pack name and description.")
+        
+        # Display current packs
+        packs = get_current_packs()
+        if packs:
+            packs_df = pd.DataFrame(packs)
+            st.header("Current Packs")
+            st.dataframe(packs_df, use_container_width=True)
+        else:
+            st.write("No packs available.")
+
         # Initialize data
         data = None
 
@@ -169,51 +197,44 @@ def main_page():
 
         # Choose pack to upload data
         st.subheader("Choose pack to upload data")
+        pack_names = [pack['Pack Name'] for pack in packs]  # Get pack names from current packs
         pack_option = st.selectbox(
             "Choose pack",
-            ("", "example_pack", "example_pack2", "example_pack3"),
+            [""] + pack_names,  # Add an empty option for default
         )
 
         st.write("You selected:", pack_option)
 
-        if st.button(f"Upload {pack_option} to Pinecone"):
-            if data is not None and pack_option:
-                # Format the data to be uploaded to Pinecone
-                response = upload_to_pinecone(data, pack_option)
-                if response:
-                    st.success("Data uploaded to Pinecone successfully!")
-                else:
-                    st.error("Failed to upload data to Pinecone.")
+        # Initialize session state for storing selected packs and data
+        if 'selected_packs' not in st.session_state:
+            st.session_state.selected_packs = []
+        if 'uploaded_data' not in st.session_state:
+            st.session_state.uploaded_data = []
+
+        # Add another pack
+        if st.button("Add data to pack"):
+            if pack_option and data is not None:
+                st.session_state.selected_packs.append(pack_option)
+                st.session_state.uploaded_data.append(data)
+                st.write(f"Added {pack_option} with data to session.")
+                # Reset the selection and data
+                st.session_state.show_delete_pack_selectbox = False
+                st.rerun()
+
+        # Upload all data to Pinecone
+        if st.button("Upload all data to Pinecone"):
+            if st.session_state.uploaded_data and st.session_state.selected_packs:
+                for pack, data in zip(st.session_state.selected_packs, st.session_state.uploaded_data):
+                    response = upload_to_pinecone(data, pack)
+                    if response:
+                        st.success(f"Data for {pack} uploaded to Pinecone successfully!")
+                    else:
+                        st.error(f"Failed to upload data for {pack} to Pinecone.")
+                # Clear session data after upload
+                st.session_state.selected_packs.clear()
+                st.session_state.uploaded_data.clear()
             else:
                 st.error("No data loaded or pack not selected. Please load data and select a pack before uploading.")
-    
-
-    if action == "Create Pack":
-        st.header("Create a New Pack")
-        
-        # Create a form for creating a new pack
-        with st.form(key='create_pack_form'):
-            pack_name = st.text_input("Pack Name")
-            pack_description = st.text_area("Pack Description")
-            submit_button = st.form_submit_button(label='Submit')
-        
-        if submit_button:
-            if pack_name and pack_description:
-                st.write(f"**Pack Name:** {pack_name}")
-                st.write(f"**Pack Description:** {pack_description}")
-                # You can add more logic here to process the pack creation
-                st.success("Pack created successfully!")
-            else:
-                st.error("Please enter both the pack name and description.")
-        
-        # Display current packs
-        packs = get_current_packs()
-        if packs:
-            packs_df = pd.DataFrame(packs)
-            st.header("Current Packs")
-            st.dataframe(packs_df, use_container_width=True)
-        else:
-            st.write("No packs available.")
 
     elif action == "Delete Pack":
         st.header("Delete a Pack")
