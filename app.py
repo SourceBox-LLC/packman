@@ -64,7 +64,8 @@ def get_current_packs():
                 packs.append({
                     'Pack Name': pack['pack_name'],
                     'Description': pack['description'],
-                    'Date Created': pack['date_created'].split('T')[0]  # Convert to date only
+                    'Date Created': pack['date_created'].split('T')[0],
+                    'Pack ID': pack['id']  # Add pack_id to the returned data
                 })
             return packs
         else:
@@ -300,16 +301,60 @@ def main_page():
         # Fetch current packs
         packs = get_current_packs()
         if packs:
-            pack_names = [pack['Pack Name'] for pack in packs]
+            # Create a dictionary to map pack names to their IDs
+            pack_name_to_id = {pack['Pack Name']: pack['Pack ID'] for pack in packs}
+            pack_names = list(pack_name_to_id.keys())
+            
             selected_pack = st.selectbox("Select Pack to Delete", pack_names)
 
             if st.button("Confirm Delete", key="confirm_delete_button"):
-                # Add logic to delete the selected pack
-                st.write(f"Deleted {selected_pack}")
-                # Optionally, remove the deleted pack from the packs list
-                packs = [pack for pack in packs if pack['Pack Name'] != selected_pack]
-                packs_df = pd.DataFrame(packs)
-                st.dataframe(packs_df, use_container_width=True)
+                # Delete from database
+                db_payload = {
+                    "action": "DELETE_USER_PACK",
+                    "user_id": 2,  # TODO: Replace with actual user_id from session
+                    "pack_id": pack_name_to_id[selected_pack]
+                }
+
+                try:
+                    # Delete from database using auth Lambda
+                    db_response = lambda_client.invoke(
+                        FunctionName='sb-user-auth-sbUserAuthFunction-3StRr85VyfEC',
+                        InvocationType='RequestResponse',
+                        Payload=json.dumps(db_payload)
+                    )
+                    
+                    db_response_payload = json.loads(db_response['Payload'].read())
+
+                    # Delete from Pinecone using embedding Lambda
+                    pinecone_payload = {
+                        "body": {
+                            "action": "delete_pack",
+                            "username": "example-user",  # TODO: Replace with actual username
+                            "pack_name": selected_pack
+                        }
+                    }
+
+                    pinecone_response = lambda_client.invoke(
+                        FunctionName='pinecone-embedding-HelloWorldFunction-tHPspSqIP5SE',
+                        InvocationType='RequestResponse',
+                        Payload=json.dumps(pinecone_payload)
+                    )
+                    
+                    pinecone_response_payload = json.loads(pinecone_response['Payload'].read())
+
+                    # Check if both deletions were successful
+                    if db_response_payload.get('statusCode') in [200, 204] and 'errorMessage' not in pinecone_response_payload:
+                        st.success(f"Successfully deleted pack: {selected_pack}")
+                        logging.info(f"Pack deleted - Database: {db_response_payload}, Pinecone: {pinecone_response_payload}")
+                        st.rerun()  # Refresh the page
+                    else:
+                        st.error("Failed to delete pack completely. Please try again.")
+                        logging.error(f"Delete failed - Database: {db_response_payload}, Pinecone: {pinecone_response_payload}")
+
+                except Exception as e:
+                    st.error("An error occurred while deleting the pack.")
+                    logging.error("Error deleting pack: %s", e)
+
         else:
             st.write("No packs available to delete.")
 
