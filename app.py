@@ -158,10 +158,38 @@ def main_page():
         
         if submit_button:
             if pack_name and pack_description:
-                st.write(f"**Pack Name:** {pack_name}")
-                st.write(f"**Pack Description:** {pack_description}")
-                # You can add more logic here to process the pack creation
-                st.success("Pack created successfully!")
+                # Define the payload for the Lambda function
+                payload = {
+                    "action": "ADD_USER_PACK",
+                    "user_id": 2,  # TODO: Replace with actual user_id from session
+                    "data": {
+                        "pack_name": pack_name,
+                        "description": pack_description
+                    }
+                }
+
+                try:
+                    # Invoke the Lambda function
+                    response = lambda_client.invoke(
+                        FunctionName='sb-user-auth-sbUserAuthFunction-3StRr85VyfEC',
+                        InvocationType='RequestResponse',
+                        Payload=json.dumps(payload)
+                    )
+                    
+                    # Read and parse the response
+                    response_payload = json.loads(response['Payload'].read())
+                    
+                    if response_payload.get('statusCode') in [200, 201]:
+                        st.success("Pack created successfully!")
+                        logging.info("Pack created successfully: %s", response_payload)
+                        st.rerun()
+                    else:
+                        st.error("Failed to create pack. Please try again.")
+                        logging.error("Failed to create pack: %s", response_payload)
+                    
+                except Exception as e:
+                    st.error("An error occurred while creating the pack.")
+                    logging.error("Error creating pack: %s", e)
             else:
                 st.error("Please enter both the pack name and description.")
         
