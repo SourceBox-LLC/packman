@@ -20,6 +20,8 @@ if 'access_token' not in st.session_state:
     st.session_state.access_token = None
 if 'logout_trigger' not in st.session_state:
     st.session_state.logout_trigger = False
+if 'username' not in st.session_state:
+    st.session_state.username = None
 
 # Initialize session state for delete pack
 if 'show_delete_pack_selectbox' not in st.session_state:
@@ -115,8 +117,10 @@ def login_page():
 
         # Check the response and update session state
         if response_payload.get('statusCode') == 200:
+            response_body = json.loads(response_payload['body'])
             st.session_state.logged_in = True
-            st.session_state.access_token = json.loads(response_payload['body'])['token']
+            st.session_state.access_token = response_body['token']
+            st.session_state.username = username  # Store username in session state
             logging.info("User %s logged in successfully.", username)
             st.success("Logged in successfully!")
             st.rerun()
@@ -129,7 +133,8 @@ def logout():
     logging.info("User logged out.")
     st.session_state.logged_in = False
     st.session_state.access_token = None
-    st.session_state.logout_trigger = not st.session_state.logout_trigger  # Toggle the trigger
+    st.session_state.username = None  # Clear username
+    st.session_state.logout_trigger = not st.session_state.logout_trigger
 
 # Function to display the main page
 def main_page():
@@ -442,11 +447,11 @@ def upload_to_pinecone(data, index_name):
     for batch_number, batch_data in enumerate(batches, start=1):
         logging.info("Uploading batch %d with %d records", batch_number, len(batch_data))
 
-        # Define the payload for the Lambda function
+        # Define the payload for the Lambda function with actual username
         payload = {
             "body": {
                 "action": "create_pack",
-                "username": "example-user",
+                "username": st.session_state.username,  # Using actual username from session state
                 "data": batch_data,
                 "pack_name": index_name
             }
