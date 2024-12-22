@@ -37,13 +37,43 @@ lambda_client = session.client('lambda')
 
 # Function to fetch current packs
 def get_current_packs():
-    # Placeholder data; replace with actual data retrieval logic
-    packs = [
-        {'Pack Name': 'Starter Pack', 'Description': 'This is the starter pack.', 'Date Created': '2023-01-01'},
-        {'Pack Name': 'Advanced Pack', 'Description': 'This pack contains advanced features.', 'Date Created': '2023-02-15'},
-        {'Pack Name': 'Pro Pack', 'Description': 'For professionals and businesses.', 'Date Created': '2023-03-10'},
-    ]
-    return packs
+    # Define the payload for the Lambda function
+    payload = {
+        "action": "LIST_USER_PACKS",
+        "user_id": 2  # TODO: Replace with actual user_id from session
+    }
+
+    try:
+        # Invoke the Lambda function
+        response = lambda_client.invoke(
+            FunctionName='sb-user-auth-sbUserAuthFunction-3StRr85VyfEC',
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+        
+        # Read and parse the response
+        response_payload = json.loads(response['Payload'].read())
+        
+        if response_payload.get('statusCode') == 200:
+            # Parse the body string into a dictionary
+            body = json.loads(response_payload['body'])
+            
+            # Transform the data to match the expected format
+            packs = []
+            for pack in body['packs']:
+                packs.append({
+                    'Pack Name': pack['pack_name'],
+                    'Description': pack['description'],
+                    'Date Created': pack['date_created'].split('T')[0]  # Convert to date only
+                })
+            return packs
+        else:
+            logging.error("Failed to fetch packs: %s", response_payload)
+            return []
+            
+    except Exception as e:
+        logging.error("Error fetching packs: %s", e)
+        return []
 
 # Function to display the login page
 def login_page():
