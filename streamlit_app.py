@@ -143,7 +143,7 @@ def main_page():
 
     st.title("Main Page")
     st.write("Welcome to the main page!")
-    st.write(f"Access Token: {st.session_state.access_token}")
+    #st.write(f"Access Token: {st.session_state.access_token}") for testing only
     
     # Add an action selectbox at the top
     action = st.selectbox(
