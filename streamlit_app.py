@@ -29,9 +29,9 @@ if 'show_delete_pack_selectbox' not in st.session_state:
 
 # Initialize a session using Boto3
 session = boto3.Session(
-    aws_access_key_id=st.secrets["ACCESS_KEY"],
-    aws_secret_access_key=st.secrets["SECRET_KEY"],
-    region_name=st.secrets["REGION"]
+    aws_access_key_id=st.secrets["default"]["ACCESS_KEY"],
+    aws_secret_access_key=st.secrets["default"]["SECRET_KEY"],
+    region_name=st.secrets["default"]["REGION"]
 )
 
 # Create a Lambda client
