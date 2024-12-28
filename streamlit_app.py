@@ -348,9 +348,18 @@ def main_page():
                     pinecone_response_payload = json.loads(pinecone_response['Payload'].read())
 
                     # Check if both deletions were successful
-                    if db_response_payload.get('statusCode') in [200, 204] and 'errorMessage' not in pinecone_response_payload:
-                        st.success(f"Successfully deleted pack: {selected_pack}")
-                        logging.info(f"Pack deleted - Database: {db_response_payload}, Pinecone: {pinecone_response_payload}")
+                    if db_response_payload.get('statusCode') in [200, 204]:
+                        if 'errorMessage' in pinecone_response_payload:
+                            # Check if the error is about a non-existent index
+                            if "does not exist" in pinecone_response_payload['errorMessage']:
+                                st.success(f"Pack {selected_pack} was already deleted from Pinecone.")
+                                logging.info(f"Pack {selected_pack} was already deleted from Pinecone.")
+                            else:
+                                st.error("Failed to delete pack completely. Please try again.")
+                                logging.error(f"Delete failed - Database: {db_response_payload}, Pinecone: {pinecone_response_payload}")
+                        else:
+                            st.success(f"Successfully deleted pack: {selected_pack}")
+                            logging.info(f"Pack deleted - Database: {db_response_payload}, Pinecone: {pinecone_response_payload}")
                         st.rerun()  # Refresh the page
                     else:
                         st.error("Failed to delete pack completely. Please try again.")
