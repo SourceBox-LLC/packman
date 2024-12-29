@@ -1,31 +1,39 @@
-name: CI
+# .github/workflows/streamlit-app.yml
+name: Streamlit app
+
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-test:
+  streamlit:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v3
+      - name: Check out code
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      # <-- This step creates the .streamlit/secrets.toml file in the CI environment
       - name: Create secrets.toml
         run: |
           mkdir -p .streamlit
           echo "${{ secrets.STREAMLIT_SECRETS_TOML }}" > .streamlit/secrets.toml
 
-      - name: Run tests
-        run: pytest -v
+      - name: Launch Streamlit
+        uses: streamlit/streamlit-app-action@v0.0.3
+        with:
+          app-path: streamlit_app.py
+        env:
+          # (Optional) Additional environment variables here, if needed
+          # For example, your code might rely on these:
+          # AWS_REGION: us-east-1
+          # or pass them in some other way
+          SKIP_SMOKE: "false"
