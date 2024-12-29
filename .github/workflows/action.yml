@@ -31,6 +31,7 @@ jobs:
         uses: streamlit/streamlit-app-action@v0.0.3
         with:
           app-path: streamlit_app.py
+          ruff: true
         env:
           # (Optional) Additional environment variables here, if needed
           # For example, your code might rely on these:
