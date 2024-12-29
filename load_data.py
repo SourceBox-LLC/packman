@@ -4,7 +4,6 @@ import boto3
 import os
 from botocore.exceptions import NoCredentialsError, ClientError
 import pandas as pd
-import json
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Configure logging
