@@ -32,9 +32,6 @@ jobs:
         with:
           app-path: streamlit_app.py
           ruff: true
+          ruff_args: "--fix"
         env:
-          # (Optional) Additional environment variables here, if needed
-          # For example, your code might rely on these:
-          # AWS_REGION: us-east-1
-          # or pass them in some other way
           SKIP_SMOKE: "false"
