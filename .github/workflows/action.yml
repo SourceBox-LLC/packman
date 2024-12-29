@@ -1,23 +1,31 @@
----
-name: Streamlit app
-
+name: CI
 on:
   push:
-    branches: ["master"]
+    branches: [ "main" ]
   pull_request:
-    branches: ["master"]
-
-permissions:
-  contents: read
+    branches: [ "main" ]
 
 jobs:
-  streamlit:
+  build-and-test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
-      - uses: streamlit/streamlit-app-action@v0.0.3
-        with:
-          app-path: streamlit_app.py
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # <-- This step creates the .streamlit/secrets.toml file in the CI environment
+      - name: Create secrets.toml
+        run: |
+          mkdir -p .streamlit
+          echo "${{ secrets.STREAMLIT_SECRETS_TOML }}" > .streamlit/secrets.toml
+
+      - name: Run tests
+        run: pytest -v
