@@ -27,6 +27,9 @@ jobs:
           mkdir -p .streamlit
           echo "${{ secrets.STREAMLIT_SECRETS_TOML }}" > .streamlit/secrets.toml
 
+      - name: Debug secrets.toml
+        run: cat .streamlit/secrets.toml
+
       - name: Launch Streamlit
         uses: streamlit/streamlit-app-action@v0.0.3
         with:
