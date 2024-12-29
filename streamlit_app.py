@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from dotenv import load_dotenv
-from pinecone import load_csv, load_web, load_s3_file # Import the functions from test.py
+from load_data import load_csv, load_web, load_s3_file # Import the functions from test.py
 import pandas as pd
 
 # Load environment variables
