@@ -37,6 +37,7 @@ def load_web(url):
 
     return texts
 
+
 # Load S3 file
 def load_s3_file(bucket_name, file_name):
     logging.info("Loading file from S3 bucket: %s, file: %s", bucket_name, file_name)
