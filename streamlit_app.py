@@ -3,8 +3,9 @@ import boto3
 import json
 import logging
 import os
+import requests
 from dotenv import load_dotenv
-from load_data import load_csv, load_web, load_s3_file # Import the functions from test.py
+from load_data import load_csv, load_web, load_s3_file
 import pandas as pd
 
 # Load environment variables
@@ -12,6 +13,9 @@ load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# API URL
+API_URL = os.getenv('API_URL', 'http://localhost:5000')
 
 # Initialize session state for login
 if 'logged_in' not in st.session_state:
@@ -22,56 +26,55 @@ if 'logout_trigger' not in st.session_state:
     st.session_state.logout_trigger = False
 if 'username' not in st.session_state:
     st.session_state.username = None
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = None
+if 'register_trigger' not in st.session_state:
+    st.session_state.register_trigger = False
 
 # Initialize session state for delete pack
 if 'show_delete_pack_selectbox' not in st.session_state:
     st.session_state.show_delete_pack_selectbox = False
 
-# Initialize a session using Boto3
+# Initialize a session using Boto3 for S3 operations only
 session = boto3.Session(
     aws_access_key_id=st.secrets["default"]["ACCESS_KEY"],
     aws_secret_access_key=st.secrets["default"]["SECRET_KEY"],
     region_name=st.secrets["default"]["REGION"]
 )
 
-# Create a Lambda client
+# Create a Lambda client for non-auth operations
 lambda_client = session.client('lambda')
+
+# Function to toggle registration page
+def register_trigger():
+    st.session_state.register_trigger = True
+
+# Function to go back to login page
+def back_to_login():
+    st.session_state.register_trigger = False
 
 # Function to fetch current packs
 def get_current_packs():
-    # Define the payload for the Lambda function
-    payload = {
-        "action": "LIST_USER_PACKS",
-        "user_id": 2  # TODO: Replace with actual user_id from session
-    }
-
     try:
-        # Invoke the Lambda function
-        response = lambda_client.invoke(
-            FunctionName='sb-user-auth-sbUserAuthFunction-3StRr85VyfEC',
-            InvocationType='RequestResponse',
-            Payload=json.dumps(payload)
-        )
+        # Make a request to the Flask API to get user packs
+        headers = {'Authorization': f'Bearer {st.session_state.access_token}'}
+        response = requests.get(f'{API_URL}/user/packs', headers=headers)
         
-        # Read and parse the response
-        response_payload = json.loads(response['Payload'].read())
-        
-        if response_payload.get('statusCode') == 200:
-            # Parse the body string into a dictionary
-            body = json.loads(response_payload['body'])
+        if response.status_code == 200:
+            packs = response.json()
             
             # Transform the data to match the expected format
-            packs = []
-            for pack in body['packs']:
-                packs.append({
+            formatted_packs = []
+            for pack in packs:
+                formatted_packs.append({
                     'Pack Name': pack['pack_name'],
                     'Description': pack['description'],
-                    'Date Created': pack['date_created'].split('T')[0],
-                    'Pack ID': pack['id']  # Add pack_id to the returned data
+                    'Date Created': pack['date_created'].split('T')[0] if 'T' in pack['date_created'] else pack['date_created'],
+                    'Pack ID': pack['id']
                 })
-            return packs
+            return formatted_packs
         else:
-            logging.error("Failed to fetch packs: %s", response_payload)
+            logging.error("Failed to fetch packs: %s", response.text)
             return []
             
     except Exception as e:
@@ -86,54 +89,46 @@ def login_page():
         password = st.text_input("Password", type="password")
         submit_button = st.form_submit_button("Login")
 
+    # Create a button to navigate to the registration page
+    st.button("Don't have an account? Register here", on_click=register_trigger)
+
     if submit_button:
         logging.info("Login attempt for user: %s", username)
         
-        # Define the payload for the Lambda function
-        payload = {
-            "action": "LOGIN_USER",
-            "data": {
-                "username": username,
-                "password": password
-            }
-        }
-
-        # Invoke the Lambda function
         try:
-            response = lambda_client.invoke(
-                FunctionName='sb-user-auth-sbUserAuthFunction-3StRr85VyfEC',
-                InvocationType='RequestResponse',
-                Payload=json.dumps(payload)
+            # Make a request to the Flask API for login
+            response = requests.post(
+                f'{API_URL}/login',
+                json={
+                    'username': username,
+                    'password': password
+                }
             )
-            logging.info("Lambda function invoked successfully.")
+            
+            if response.status_code == 200:
+                data = response.json()
+                st.session_state.logged_in = True
+                st.session_state.access_token = data['access_token']
+                st.session_state.username = username
+                st.session_state.user_id = data['user_id']
+                logging.info("User %s logged in successfully.", username)
+                st.success("Logged in successfully!")
+                st.rerun()
+            else:
+                logging.warning("Invalid login attempt for user: %s", username)
+                st.error("Invalid username or password")
+                
         except Exception as e:
-            logging.error("Error invoking Lambda function: %s", e)
+            logging.error("Error during login: %s", e)
             st.error("An error occurred while processing your request.")
-            return
-
-        # Read the response
-        response_payload = json.loads(response['Payload'].read())
-        logging.info("Received response from Lambda: %s", response_payload)
-
-        # Check the response and update session state
-        if response_payload.get('statusCode') == 200:
-            response_body = json.loads(response_payload['body'])
-            st.session_state.logged_in = True
-            st.session_state.access_token = response_body['token']
-            st.session_state.username = username  # Store username in session state
-            logging.info("User %s logged in successfully.", username)
-            st.success("Logged in successfully!")
-            st.rerun()
-        else:
-            logging.warning("Invalid login attempt for user: %s", username)
-            st.error("Invalid username or password")
 
 # Function to log out the user
 def logout():
     logging.info("User logged out.")
     st.session_state.logged_in = False
     st.session_state.access_token = None
-    st.session_state.username = None  # Clear username
+    st.session_state.username = None
+    st.session_state.user_id = None
     st.session_state.logout_trigger = not st.session_state.logout_trigger
 
 # Function to display the main page
@@ -143,15 +138,12 @@ def main_page():
 
     st.title("Main Page")
     st.write("Welcome to the main page!")
-    #st.write(f"Access Token: {st.session_state.access_token}") for testing only
     
     # Add an action selectbox at the top
     action = st.selectbox(
         "Choose an action",
         ("Create Pack", "Delete Pack"),
     )
-
-    
 
     if action == "Create Pack":
         st.header("Create a New Pack")
@@ -164,34 +156,25 @@ def main_page():
         
         if submit_button:
             if pack_name and pack_description:
-                # Define the payload for the Lambda function
-                payload = {
-                    "action": "ADD_USER_PACK",
-                    "user_id": 2,  # TODO: Replace with actual user_id from session
-                    "data": {
-                        "pack_name": pack_name,
-                        "description": pack_description
-                    }
-                }
-
                 try:
-                    # Invoke the Lambda function
-                    response = lambda_client.invoke(
-                        FunctionName='sb-user-auth-sbUserAuthFunction-3StRr85VyfEC',
-                        InvocationType='RequestResponse',
-                        Payload=json.dumps(payload)
+                    # Make a request to the Flask API to create a new pack
+                    headers = {'Authorization': f'Bearer {st.session_state.access_token}'}
+                    response = requests.post(
+                        f'{API_URL}/user/packs',
+                        headers=headers,
+                        json={
+                            'pack_name': pack_name,
+                            'description': pack_description
+                        }
                     )
                     
-                    # Read and parse the response
-                    response_payload = json.loads(response['Payload'].read())
-                    
-                    if response_payload.get('statusCode') in [200, 201]:
+                    if response.status_code in [200, 201]:
                         st.success("Pack created successfully!")
-                        logging.info("Pack created successfully: %s", response_payload)
+                        logging.info("Pack created successfully: %s", response.text)
                         st.rerun()
                     else:
                         st.error("Failed to create pack. Please try again.")
-                        logging.error("Failed to create pack: %s", response_payload)
+                        logging.error("Failed to create pack: %s", response.text)
                     
                 except Exception as e:
                     st.error("An error occurred while creating the pack.")
@@ -313,57 +296,44 @@ def main_page():
             selected_pack = st.selectbox("Select Pack to Delete", pack_names)
 
             if st.button("Confirm Delete", key="confirm_delete_button"):
-                # Delete from database
-                db_payload = {
-                    "action": "DELETE_USER_PACK",
-                    "user_id": 2,  # TODO: Replace with actual user_id from session
-                    "pack_id": pack_name_to_id[selected_pack]
-                }
-
                 try:
-                    # Delete from database using auth Lambda
-                    db_response = lambda_client.invoke(
-                        FunctionName='sb-user-auth-sbUserAuthFunction-3StRr85VyfEC',
-                        InvocationType='RequestResponse',
-                        Payload=json.dumps(db_payload)
-                    )
+                    # Delete pack using Flask API
+                    headers = {'Authorization': f'Bearer {st.session_state.access_token}'}
+                    pack_id = pack_name_to_id[selected_pack]
+                    response = requests.delete(f'{API_URL}/user/packs/{pack_id}', headers=headers)
                     
-                    db_response_payload = json.loads(db_response['Payload'].read())
-
-                    # Delete from Pinecone using embedding Lambda
-                    pinecone_payload = {
-                        "body": {
-                            "action": "delete_pack",
-                            "username": "example-user",  # TODO: Replace with actual username
-                            "pack_name": selected_pack
+                    if response.status_code in [200, 204]:
+                        # Now handle Pinecone deletion via Lambda (this part remains the same)
+                        pinecone_payload = {
+                            "body": {
+                                "action": "delete_pack",
+                                "username": st.session_state.username,
+                                "pack_name": selected_pack
+                            }
                         }
-                    }
 
-                    pinecone_response = lambda_client.invoke(
-                        FunctionName='pinecone-embedding-HelloWorldFunction-tHPspSqIP5SE',
-                        InvocationType='RequestResponse',
-                        Payload=json.dumps(pinecone_payload)
-                    )
-                    
-                    pinecone_response_payload = json.loads(pinecone_response['Payload'].read())
+                        pinecone_response = lambda_client.invoke(
+                            FunctionName='pinecone-embedding-HelloWorldFunction-tHPspSqIP5SE',
+                            InvocationType='RequestResponse',
+                            Payload=json.dumps(pinecone_payload)
+                        )
+                        
+                        pinecone_response_payload = json.loads(pinecone_response['Payload'].read())
 
-                    # Check if both deletions were successful
-                    if db_response_payload.get('statusCode') in [200, 204]:
+                        # Handle Pinecone response
                         if 'errorMessage' in pinecone_response_payload:
-                            # Check if the error is about a non-existent index
                             if "does not exist" in pinecone_response_payload['errorMessage']:
-                                st.success(f"Pack {selected_pack} was already deleted from Pinecone.")
-                                logging.info(f"Pack {selected_pack} was already deleted from Pinecone.")
+                                st.success(f"Pack {selected_pack} deleted successfully. It was already removed from Pinecone.")
                             else:
-                                st.error("Failed to delete pack completely. Please try again.")
-                                logging.error(f"Delete failed - Database: {db_response_payload}, Pinecone: {pinecone_response_payload}")
+                                st.warning(f"Pack {selected_pack} deleted from database, but had an issue with Pinecone: {pinecone_response_payload['errorMessage']}")
                         else:
                             st.success(f"Successfully deleted pack: {selected_pack}")
-                            logging.info(f"Pack deleted - Database: {db_response_payload}, Pinecone: {pinecone_response_payload}")
-                        st.rerun()  # Refresh the page
+                        
+                        logging.info(f"Pack deleted from database: {response.text}, Pinecone: {pinecone_response_payload}")
+                        st.rerun()
                     else:
-                        st.error("Failed to delete pack completely. Please try again.")
-                        logging.error(f"Delete failed - Database: {db_response_payload}, Pinecone: {pinecone_response_payload}")
+                        st.error(f"Failed to delete pack. Server responded with: {response.status_code}")
+                        logging.error(f"Delete failed - API response: {response.text}")
 
                 except Exception as e:
                     st.error("An error occurred while deleting the pack.")
@@ -374,6 +344,53 @@ def main_page():
 
     else:
         st.write("Please select an action to proceed.")
+
+def register_page():
+    st.title("Register Page")
+    
+    # Add a button to go back to login
+    st.button("Back to Login", on_click=back_to_login)
+    
+    with st.form("register_form"):
+        username = st.text_input("Username")
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        confirm_password = st.text_input("Confirm Password", type="password")
+        submit_button = st.form_submit_button("Register")
+
+        if submit_button:
+            if not username or not email or not password:
+                st.error("Please fill in all required fields")
+            elif password != confirm_password:
+                st.error("Passwords do not match")
+            else:
+                try:
+                    # Make a request to the Flask API to register a new user
+                    response = requests.post(
+                        f'{API_URL}/register',
+                        json={
+                            'username': username,
+                            'email': email,
+                            'password': password
+                        }
+                    )
+                    
+                    if response.status_code == 201:
+                        st.success("Registration successful! You can now log in.")
+                        # Go back to login page after successful registration
+                        st.session_state.register_trigger = False
+                        st.rerun()
+                    elif response.status_code == 409:
+                        data = response.json()
+                        st.error(f"Registration failed: {data.get('message', 'Username or email already exists')}")
+                    else:
+                        st.error(f"Registration failed: {response.status_code}")
+                        
+                except Exception as e:
+                    logging.error("Error during registration: %s", e)
+                    st.error("An error occurred during registration. Please try again later.")
+
+
 
 def display_packs_with_delete():
     packs = get_current_packs()
@@ -493,6 +510,8 @@ def upload_to_pinecone(data, index_name):
 # Display the appropriate page based on login state
 if st.session_state.logged_in:
     main_page()
+elif st.session_state.register_trigger:
+    register_page()
 else:
     login_page()
 
